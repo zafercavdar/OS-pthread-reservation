@@ -6,7 +6,6 @@
 #include <unistd.h>
 #include <errno.h>
 
-#define NUM_PASSENGER 100
 #define DAY_IN_SECONDS 1
 
 typedef struct Reservation {
@@ -14,6 +13,7 @@ typedef struct Reservation {
   int seatnumber; //last seat number
   int tour_id;
   int passenger_id;
+  int agent_id;
 } Reservation;
 
 typedef struct Seat{
@@ -31,6 +31,7 @@ typedef struct Passenger {
 } Passenger;
 
 typedef struct Agent {
+  int agent_id;
 
 } Agent;
 
@@ -69,17 +70,18 @@ int log_counter = 0;
 //Passenger starting functions
 void* makeReservation(int passenger_id, int tour_id, int agent_id, int seatnumber){
   time_t now;
-  pthread_mutex_lock(&mutexs[seatnumber-1]);
+  int index = num_of_seats * (tour_id - 1) + seatnumber -1;
+  pthread_mutex_lock(&mutexs[index]);
 
-  if (seats[seatnumber-1].status == 'A'){
-      seats[seatnumber-1].status = 'R';
+  if (seats[index].status == 'A'){
+      seats[index].status = 'R';
       now = time(0);
-      seats[seatnumber-1].passenger_id = passenger_id;
+      seats[index].passenger_id = passenger_id;
 
       pthread_mutex_lock(&reservation_counter_mutex);
       reservation_unique_counter += 1;
-      seats[seatnumber-1].reservation_id = reservation_unique_counter;
-      seats[seatnumber-1].tour_id = tour_id;
+      seats[index].reservation_id = reservation_unique_counter;
+      seats[index].tour_id = tour_id;
       pthread_mutex_unlock(&reservation_counter_mutex);
 
       pthread_mutex_lock(&log_mutex);
@@ -96,18 +98,70 @@ void* makeReservation(int passenger_id, int tour_id, int agent_id, int seatnumbe
       //printf("The seat %d is already reserved.\n", seatnumber);
   }
 
-  pthread_mutex_unlock(&mutexs[seatnumber-1]);
-
+  pthread_mutex_unlock(&mutexs[index]);
 }
 
-void* cancelReservation(){
+void* cancelReservation(int passenger_id, int tour_id, int agent_id, int seatnumber){
+    time_t now;
+    int index = num_of_seats * (tour_id - 1) + seatnumber -1;
+    pthread_mutex_lock(&mutexs[index]);
 
+    if (seats[index].passenger_id == passenger_id && seats[index].tour_id == tour_id){
 
+        if (seats[index].status == 'R'){
+          seats[index].status = 'A';
+          now = time(0);
+          seats[index].passenger_id = NULL;
+          seats[index].reservation_id = NULL;
+          seats[index].tour_id = NULL;
+
+          pthread_mutex_lock(&log_mutex);
+          logs[log_counter].ptime = now;
+          logs[log_counter].passenger_id = passenger_id;
+          logs[log_counter].agent_id = agent_id;
+          logs[log_counter].operation = 'C';
+          logs[log_counter].seat_number = seatnumber;
+          logs[log_counter].tour_id = tour_id;
+          log_counter += 1;
+          pthread_mutex_unlock(&log_mutex);
+        }
+        else{
+          printf("This seat is not reserved!");
+        }
+    }
+    else{
+        printf("This reservation does not belong to given passenger_id!\n");
+    }
+
+    pthread_mutex_unlock(&mutexs[index]);
 }
 
-void* buyTicket(){
+void* buyTicket(int passenger_id, int tour_id, int agent_id, int seatnumber){
+  time_t now;
+  int index = num_of_seats * (tour_id - 1) + seatnumber -1;
+  pthread_mutex_lock(&mutexs[index]);
 
+  if (seats[index].status == 'A' || (seats[index].status == 'R' && seats[index].passenger_id == passenger_id)){
+      seats[index].status = 'B';
+      now = time(0);
+      seats[index].passenger_id = passenger_id;
+      seats[index].tour_id = tour_id;
+      seats[index].reservation_id = NULL;
 
+      pthread_mutex_lock(&log_mutex);
+      logs[log_counter].ptime = now;
+      logs[log_counter].passenger_id = passenger_id;
+      logs[log_counter].agent_id = agent_id;
+      logs[log_counter].operation = 'B';
+      logs[log_counter].seat_number = seatnumber;
+      logs[log_counter].tour_id = tour_id;
+      log_counter += 1;
+      pthread_mutex_unlock(&log_mutex);
+  }
+  else{
+      printf("The seat is not available or not reserved by this passenger.");
+  }
+  pthread_mutex_unlock(&mutexs[index]);
 }
 
 void* doRandomAgentActions(void* arg){
@@ -118,8 +172,7 @@ void* doRandomAgentActions(void* arg){
 void* doRandomPassengerActions(void* arg){
     PidArgs *parg = arg;
     int passenger_id = parg->pid;
-    int rseat;
-    //printf("new passenger %d\n",passenger_id);
+    int rseat, rtour;
 
     long int start = (long int) time(0);
     float r;
@@ -128,25 +181,25 @@ void* doRandomPassengerActions(void* arg){
     while (time(0) < start + simulation_time * DAY_IN_SECONDS){
         r = (rand() % 10000) / 10000.0;
         if (r < 0.4){
-          //printf("reservation time for %d\n", passenger_id);
           rseat = (int)(rand() % num_of_seats + 1);
-          //printf("random seat: %d\n",rseat);
-          makeReservation(passenger_id,1, 0, rseat);
+          rtour = (int)(rand() % num_of_tours + 1);
+          makeReservation(passenger_id, rtour, 0, rseat);
         }
         else if (r < 0.6){
-          //printf("cancel time for %d\n",passenger_id);
+          //cancelReservation(passenger_id, , 0, );
         }
         else if (r < 0.8){
           //printf("view the reserved ticket for %d\n", passenger_id);
         }
         else{
+          //buyTicket(passenger_id, , 0, 0);
           //printf("buy the reserved ticket for %d\n", passenger_id);
         }
     }
 }
 
 int main(int argc, char *argv[]){
-  int i,j,k,d,ind,j2,k2;
+  int i,j,k,d,ind,j2,k2, m;
   pthread_t *passengerThreads;
   pthread_t *agentThreads;
   PidArgs *pargs;
@@ -178,23 +231,24 @@ int main(int argc, char *argv[]){
     }
   }
 
-  mutexs = malloc(sizeof(pthread_mutex_t) * num_of_seats);
-  seats = malloc(sizeof(Seat) * num_of_seats);
+  mutexs = malloc(sizeof(pthread_mutex_t) * num_of_seats * num_of_tours);
+  seats = malloc(sizeof(Seat) * num_of_seats * num_of_tours);
   logs =  malloc(sizeof(Log) * 10000);
 
-  for (i= 0; i < num_of_seats; i++){
-      seats[i].status = 'A';
-      seats[i].seatnumber = i + 1;
+  for (m = 0; m < num_of_tours; m++){
+    for (i= 0; i < num_of_seats; i++){
+        int index = m * num_of_seats + i;
+        seats[index].status = 'A';
+        seats[index].seatnumber = i + 1;
+        seats[index].tour_id = m + 1;
+        pthread_mutex_init(&mutexs[index], NULL);
+    }
   }
 
   passengerThreads = malloc(sizeof(pthread_t) * num_of_passengers);
   pargs = malloc(sizeof(PidArgs) * num_of_passengers);
   agentThreads = malloc(sizeof(pthread_t) * num_of_agents);
   aargs = malloc(sizeof(AidArgs) * num_of_agents);
-
-  for (i= 0; i <  num_of_seats; i++){
-    pthread_mutex_init(&mutexs[i], NULL);
-  }
 
   pthread_mutex_init(&reservation_counter_mutex, NULL);
   pthread_mutex_init(&log_mutex, NULL);
@@ -227,7 +281,7 @@ int main(int argc, char *argv[]){
       printf("%-2d:%-2d:%-2d\t%-5d\t%-5d\t%-9c\t%-7d \t%-7d\n", time_info->tm_hour, time_info->tm_min, time_info->tm_sec, logs[ind].passenger_id, logs[ind].agent_id, logs[ind].operation, logs[ind].seat_number, logs[ind].tour_id);
   }
 
-  for (d = 0; d < num_of_seats; d++){
+  for (d = 0; d < num_of_seats * num_of_tours; d++){
     pthread_mutex_destroy(&mutexs[d]);
   }
 
