@@ -254,8 +254,126 @@ void* buyTicket(int passenger_id, int tour_id, int agent_id, int seatnumber, int
 }
 
 void* doRandomAgentActions(void* arg){
+    AidArgs *aarg = arg;
+    int agent_id = aarg->aid;
+    int rseat, rtour;
+    int i;
+    long int start;
+    float r;
+    int rres;
+    int temp_index;
+    int rcount = 0;
+    int rindices[4];
+    int rdays[4];
+    int passenger_id;
+    srand(random_seed);
 
+    for (i= 0; i < simulation_time; i++){
+        start = (long int) time(0);
+        while (time(0) < start + DAY_IN_SECONDS){
+            r = (rand() % 10000) / 10000.0;
+            rcount = 0;
+            passenger_id = (int) (rand() % num_of_passengers);
 
+            if (r < 0.4){
+              rseat = (int)(rand() % num_of_seats + 1);
+              rtour = (int)(rand() % num_of_tours + 1);
+              makeReservation(passenger_id, rtour, agent_id, rseat,i);
+            }
+            else if (r < 0.6){
+              if (i > 0){
+                if (passengers[passenger_id].rid1[i-1] != -1){
+                    rindices[rcount] = passengers[passenger_id].rid1[i-1];
+                    rdays[rcount] = i-1;
+                    rcount += 1;
+                }
+                if (passengers[passenger_id].rid2[i-1] != -1){
+                    rindices[rcount] = passengers[passenger_id].rid2[i-1];
+                    rdays[rcount] = i-1;
+                    rcount += 1;
+                }
+              }
+
+              if (passengers[passenger_id].rid2[i] != -1){
+                  rindices[rcount] = passengers[passenger_id].rid2[i];
+                  rdays[rcount] = i;
+                  rcount += 1;
+              }
+
+              if (passengers[passenger_id].rid1[i] != -1){
+                  rindices[rcount] = passengers[passenger_id].rid1[i];
+                  rdays[rcount] = i;
+                  rcount += 1;
+              }
+
+              if (rcount > 1){
+                  rres = (int) (rand() % rcount);
+                  temp_index = rindices[rres];
+                  rtour = (temp_index / num_of_seats) + 1;
+                  rseat = (temp_index % num_of_seats) + 1;
+                  printf("AGENT CANCEL REQUEST from random %d %d %d\n",rtour,rseat,rdays[rres]);
+                  cancelReservation(passenger_id, rtour, agent_id, rseat, rdays[rres]);
+
+              } else if (rcount == 1){
+                temp_index = rindices[0];
+                rtour = (temp_index / num_of_seats) + 1;
+                rseat = (temp_index % num_of_seats) + 1;
+                printf("AGENT CANCEL REQUEST from one selection %d %d %d\n",rtour,rseat,rdays[0]);
+                cancelReservation(passenger_id, rtour, agent_id, rseat, rdays[0]);
+              } else {
+                  //printf("No reservation to cancel!\n");
+              }
+            }
+            else if (r < 0.8){
+              //printf("view the reserved ticket for %d\n", passenger_id);
+            }
+            else{
+              if (i > 0){
+                if (passengers[passenger_id].rid1[i-1] != -1){
+                    rindices[rcount] = passengers[passenger_id].rid1[i-1];
+                    rdays[rcount] = i-1;
+                    rcount += 1;
+                }
+                if (passengers[passenger_id].rid2[i-1] != -1){
+                    rindices[rcount] = passengers[passenger_id].rid2[i-1];
+                    rdays[rcount] = i-1;
+                    rcount += 1;
+                }
+              }
+
+              if (passengers[passenger_id].rid2[i] != -1){
+                  rindices[rcount] = passengers[passenger_id].rid2[i];
+                  rdays[rcount] = i;
+                  rcount += 1;
+              }
+
+              if (passengers[passenger_id].rid1[i] != -1){
+                  rindices[rcount] = passengers[passenger_id].rid1[i];
+                  rdays[rcount] = i;
+                  rcount += 1;
+              }
+
+              if (rcount > 1){
+                  rres = (int) (rand() % rcount);
+                  temp_index = rindices[rres];
+                  rtour = (temp_index / num_of_seats) + 1;
+                  rseat = (temp_index % num_of_seats) + 1;
+                  printf("AGENT BUY REQUEST: from random %d %d %d\n",rtour,rseat,rdays[rres]);
+                  buyTicket(passenger_id, rtour, agent_id, rseat, rdays[rres]);
+
+              } else if (rcount == 1){
+                temp_index = rindices[0];
+                rtour = (temp_index / num_of_seats) + 1;
+                rseat = (temp_index % num_of_seats) + 1;
+                printf("AGENT BUY REQUEST: from one selection %d %d %d\n",rtour,rseat,rdays[0]);
+                buyTicket(passenger_id, rtour, agent_id, rseat, rdays[0]);
+              } else {
+                  //printf("No reservation to buy!\n");
+              }
+            }
+        }
+        // ONE DAY PASSED
+    }
 }
 
 void* doRandomPassengerActions(void* arg){
@@ -321,14 +439,14 @@ void* doRandomPassengerActions(void* arg){
                   temp_index = rindices[rres];
                   rtour = (temp_index / num_of_seats) + 1;
                   rseat = (temp_index % num_of_seats) + 1;
-                  printf("from random %d %d %d\n",rtour,rseat,rdays[rres]);
+                  printf("PASSENGER CANCEL REQUEST from random %d %d %d\n",rtour,rseat,rdays[rres]);
                   cancelReservation(passenger_id, rtour, 0, rseat, rdays[rres]);
 
               } else if (rcount == 1){
                 temp_index = rindices[0];
                 rtour = (temp_index / num_of_seats) + 1;
                 rseat = (temp_index % num_of_seats) + 1;
-                printf("from one selection %d %d %d\n",rtour,rseat,rdays[0]);
+                printf("PASSENGER CANCEL REQUEST from one selection %d %d %d\n",rtour,rseat,rdays[0]);
                 cancelReservation(passenger_id, rtour, 0, rseat, rdays[0]);
               } else {
                   //printf("No reservation to cancel!\n");
@@ -368,14 +486,14 @@ void* doRandomPassengerActions(void* arg){
                   temp_index = rindices[rres];
                   rtour = (temp_index / num_of_seats) + 1;
                   rseat = (temp_index % num_of_seats) + 1;
-                  printf("BUY: from random %d %d %d\n",rtour,rseat,rdays[rres]);
+                  printf("PASSENGER BUY REQUEST: from random %d %d %d\n",rtour,rseat,rdays[rres]);
                   buyTicket(passenger_id, rtour, 0, rseat, rdays[rres]);
 
               } else if (rcount == 1){
                 temp_index = rindices[0];
                 rtour = (temp_index / num_of_seats) + 1;
                 rseat = (temp_index % num_of_seats) + 1;
-                printf("BUY: from one selection %d %d %d\n",rtour,rseat,rdays[0]);
+                printf("PASSENGER BUY REQUEST: from one selection %d %d %d\n",rtour,rseat,rdays[0]);
                 buyTicket(passenger_id, rtour, 0, rseat, rdays[0]);
               } else {
                   //printf("No reservation to buy!\n");
@@ -464,7 +582,7 @@ int main(int argc, char *argv[]){
   }
 
   for(j2 = 0; j2 < num_of_agents; j2++){
-    pargs[j2].pid = j2;
+    aargs[j2].aid = j2 + 1;
     pthread_create(&agentThreads[j2],NULL, doRandomAgentActions, &aargs[j2]);
   }
 
