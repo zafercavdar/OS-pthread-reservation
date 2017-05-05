@@ -7,8 +7,7 @@
 #include <errno.h>
 #include <semaphore.h>
 
-#define DAY_IN_SECONDS 1
-#define CV_ENABLED 1
+#define DAY_IN_SECONDS 5
 
 typedef struct Reservation {
   int reservation_id; // reservation id
@@ -27,6 +26,7 @@ typedef struct {
   size_t used;
   size_t size;
 } Array;
+
 
 void initArray(Array *a, size_t initialSize) {
   a->array = (int *)malloc(initialSize * sizeof(int));
@@ -64,7 +64,7 @@ typedef struct Passenger {
   int passenger_id;
   int *rid1;
   int *rid2;
-  Array seats;
+  Array *seats;
 } Passenger;
 
 typedef struct Agent {
@@ -258,7 +258,7 @@ void* buyTicket(int passenger_id, int tour_id, int agent_id, int seatnumber, int
       seats[index].tour_id = tour_id;
       seats[index].reservation_id = -1;
 
-      insertArray(&passengers[passenger_id].seats, index);
+      insertArray(&passengers[passenger_id].seats[day], index);
 
       if (passengers[passenger_id].rid1[day] == index){
           passengers[passenger_id].rid1[day] = -1;
@@ -492,6 +492,7 @@ void* doRandomPassengerActions(void* arg){
     int rdays[4];
     int resResult;
     int resperdayCount = 0;
+    int h,n;
     srand(random_seed);
 
     for (i= 0; i < simulation_time; i++){
@@ -603,12 +604,12 @@ void* doRandomPassengerActions(void* arg){
             }
         }
         resperdayCount = 0;
-        // ONE DAY PASSED
     }
 }
 
 int main(int argc, char *argv[]){
-  int i,j,k,d,ind,j2,k2, m,g, v;
+  int i,j,k,d,ind,j2,k2, m,g, v,h,n,dday;
+  int sumtour,sumseat;
   pthread_t *passengerThreads;
   pthread_t *agentThreads;
   PidArgs *pargs;
@@ -672,11 +673,13 @@ int main(int argc, char *argv[]){
       passengers[m].passenger_id = m;
       passengers[m].rid1 = malloc(sizeof(int) * simulation_time);
       passengers[m].rid2 = malloc(sizeof(int) * simulation_time);
+      passengers[m].seats = malloc(sizeof(Array) * simulation_time);
+
       for (g = 0; g < simulation_time; g++){
         passengers[m].rid1[g] = -1;
         passengers[m].rid2[g] = -1;
+        initArray(&passengers[m].seats[g], 5);
       }
-      initArray(&passengers[m].seats, 5);
       pthread_mutex_init(&mutexs_passenger[m], NULL);
   }
 
@@ -707,15 +710,58 @@ int main(int argc, char *argv[]){
       pthread_join(agentThreads[k2],NULL);
   }
 
+  for (dday = 0; dday < simulation_time; dday++){
+    printf("==============\n");
+    printf("Day%d\n",dday+1);
+    printf("==============\n");
+    printf("Reserved seats:\n");
+    for (h = 0; h < num_of_tours; h++){
+        printf("Tour %d: ",h+1);
+        for (n = 0; n < num_of_passengers; n++){
+            if (passengers[n].rid1[dday] != -1){
+              sumtour = (passengers[n].rid1[dday] / num_of_seats) + 1;
+              sumseat = (passengers[n].rid1[dday] % num_of_seats) + 1;
+              if (sumtour == h + 1){
+                printf("%d,",sumseat);
+              }
+            }
+            if (passengers[n].rid2[dday] != -1){
+              sumtour = (passengers[n].rid2[dday] / num_of_seats) + 1;
+              sumseat = (passengers[n].rid2[dday] % num_of_seats) + 1;
+              if (sumtour == h + 1){
+                printf("%d,",sumseat);
+              }
+            }
+        }
+        printf("\n");
+    }
+    printf("Bought seats:\n");
+    for (h = 0; h < num_of_tours; h++){
+        printf("Tour %d: ",h+1);
+        for (n = 0; n < num_of_passengers; n++){
+            for (g = 0; g < passengers[n].seats[dday].used; g++){
+                sumtour = (passengers[n].seats[dday].array[g] / num_of_seats) + 1;
+                sumseat = (passengers[n].seats[dday].array[g] % num_of_seats) + 1;
 
-  //printf("%-10s\t%-5s\t%-9s\t%-7s\t%-7s","Time","P_ID","A_ID","Operation","Seat No", "Tour No");
+                if (sumtour == h + 1){
+                  printf("%d,",sumseat);
+                }
+            }
+        }
+        printf("\n");
+    }
+  }
+
+
+
+  //printf("Time     \tP_ID\tA_ID\tOperation\tSeat No \tTour No\n");
   fprintf(output,"Time     \tP_ID\tA_ID\tOperation\tSeat No \tTour No\n");
 
   for(ind = 0; ind < log_counter; ind++){
       time_t t = logs[ind].ptime;
       struct tm *time_info;
       time_info = localtime(&t);
-      printf("%-2d:%-2d:%-2d\t%-5d\t%-5d\t%-9c\t%-7d \t%-7d\n", time_info->tm_hour, time_info->tm_min, time_info->tm_sec, logs[ind].passenger_id, logs[ind].agent_id, logs[ind].operation, logs[ind].seat_number, logs[ind].tour_id);
+      //printf("%-2d:%-2d:%-2d\t%-5d\t%-5d\t%-9c\t%-7d \t%-7d\n", time_info->tm_hour, time_info->tm_min, time_info->tm_sec, logs[ind].passenger_id, logs[ind].agent_id, logs[ind].operation, logs[ind].seat_number, logs[ind].tour_id);
       fprintf(output,"%-2d:%-2d:%-2d\t%-5d\t%-5d\t%-9c\t%-7d \t%-7d\n", time_info->tm_hour, time_info->tm_min, time_info->tm_sec, logs[ind].passenger_id, logs[ind].agent_id, logs[ind].operation, logs[ind].seat_number, logs[ind].tour_id);
   }
 
