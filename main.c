@@ -369,65 +369,7 @@ void* doRandomAgentActions(void* arg){
               }
             }
             else if (r < 0.8){
-              /*
-              if (passengers[passenger_id].seats.used != 0){
-                  viewable = 1;
-                  now = time(0);
-                  temp_index = passengers[passenger_id].seats.array[0];
-                  rtour = (temp_index / num_of_seats) + 1;
-                  rseat = (temp_index % num_of_seats) + 1;
-              } else {
-                if (i > 0){
-                  if (passengers[passenger_id].rid1[i-1] != -1){
-                      rindices[rcount] = passengers[passenger_id].rid1[i-1];
-                      rdays[rcount] = i-1;
-                      rcount += 1;
-                  }
-                  if (passengers[passenger_id].rid2[i-1] != -1){
-                      rindices[rcount] = passengers[passenger_id].rid2[i-1];
-                      rdays[rcount] = i-1;
-                      rcount += 1;
-                  }
-                }
-
-                if (passengers[passenger_id].rid2[i] != -1){
-                    rindices[rcount] = passengers[passenger_id].rid2[i];
-                    rdays[rcount] = i;
-                    rcount += 1;
-                }
-
-                if (passengers[passenger_id].rid1[i] != -1){
-                    rindices[rcount] = passengers[passenger_id].rid1[i];
-                    rdays[rcount] = i;
-                    rcount += 1;
-                }
-
-                if (rcount > 1){
-                    viewable = 1;
-                    rres = (int) (rand() % rcount);
-                    temp_index = rindices[rres];
-                    rtour = (temp_index / num_of_seats) + 1;
-                    rseat = (temp_index % num_of_seats) + 1;
-
-                } else if (rcount == 1){
-                  viewable = 1;
-                  temp_index = rindices[0];
-                  rtour = (temp_index / num_of_seats) + 1;
-                  rseat = (temp_index % num_of_seats) + 1;
-                }
-              }
-
-              if (viewable == 1){
-                pthread_mutex_lock(&log_mutex);
-                logs[log_counter].ptime = now;
-                logs[log_counter].passenger_id = passenger_id;
-                logs[log_counter].agent_id = 0;
-                logs[log_counter].operation = 'V';
-                logs[log_counter].seat_number = rseat;
-                logs[log_counter].tour_id = rtour;
-                log_counter += 1;
-                pthread_mutex_unlock(&log_mutex);
-              }*/
+                // not implemented
             }
             else{ // BUY PART
               if (i > 0){
@@ -556,6 +498,65 @@ void* doRandomPassengerActions(void* arg){
               }
             }
             else if (r < 0.8){
+              /*
+              if (passengers[passenger_id].seats.used != 0){
+                  viewable = 1;
+                  now = time(0);
+                  temp_index = passengers[passenger_id].seats.array[0];
+                  rtour = (temp_index / num_of_seats) + 1;
+                  rseat = (temp_index % num_of_seats) + 1;
+              } else {
+                if (i > 0){
+                  if (passengers[passenger_id].rid1[i-1] != -1){
+                      rindices[rcount] = passengers[passenger_id].rid1[i-1];
+                      rdays[rcount] = i-1;
+                      rcount += 1;
+                  }
+                  if (passengers[passenger_id].rid2[i-1] != -1){
+                      rindices[rcount] = passengers[passenger_id].rid2[i-1];
+                      rdays[rcount] = i-1;
+                      rcount += 1;
+                  }
+                }
+
+                if (passengers[passenger_id].rid2[i] != -1){
+                    rindices[rcount] = passengers[passenger_id].rid2[i];
+                    rdays[rcount] = i;
+                    rcount += 1;
+                }
+
+                if (passengers[passenger_id].rid1[i] != -1){
+                    rindices[rcount] = passengers[passenger_id].rid1[i];
+                    rdays[rcount] = i;
+                    rcount += 1;
+                }
+
+                if (rcount > 1){
+                    viewable = 1;
+                    rres = (int) (rand() % rcount);
+                    temp_index = rindices[rres];
+                    rtour = (temp_index / num_of_seats) + 1;
+                    rseat = (temp_index % num_of_seats) + 1;
+
+                } else if (rcount == 1){
+                  viewable = 1;
+                  temp_index = rindices[0];
+                  rtour = (temp_index / num_of_seats) + 1;
+                  rseat = (temp_index % num_of_seats) + 1;
+                }
+              }
+
+              if (viewable == 1){
+                pthread_mutex_lock(&log_mutex);
+                logs[log_counter].ptime = now;
+                logs[log_counter].passenger_id = passenger_id;
+                logs[log_counter].agent_id = 0;
+                logs[log_counter].operation = 'V';
+                logs[log_counter].seat_number = rseat;
+                logs[log_counter].tour_id = rtour;
+                log_counter += 1;
+                pthread_mutex_unlock(&log_mutex);
+              }*/
               //printf("view the reserved ticket for %d\n", passenger_id);
             }
             else{
