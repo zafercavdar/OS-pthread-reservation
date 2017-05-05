@@ -8,6 +8,7 @@
 #include <semaphore.h>
 
 #define DAY_IN_SECONDS 1
+#define CV_ENABLED 1
 
 typedef struct Reservation {
   int reservation_id; // reservation id
@@ -90,11 +91,11 @@ typedef struct Log{
   int tour_id;
 } Log;
 
-pthread_mutex_t *mutexs;
-pthread_mutex_t *mutexs_passenger;
+pthread_mutex_t *mutexs; // for seats
+pthread_mutex_t *mutexs_passenger; //for passenger update
 
-pthread_mutex_t reservation_counter_mutex;
-pthread_mutex_t log_mutex;
+pthread_mutex_t reservation_counter_mutex; // reservation no update
+pthread_mutex_t log_mutex; // update log
 Seat *seats; //a(vailable), r(eserved), b(ought)
 Log *logs;
 Passenger *passengers;
@@ -107,6 +108,11 @@ int num_of_seats;
 int random_seed;
 int reservation_unique_counter = 1000;
 int log_counter = 0;
+int *remainingSeats;
+
+pthread_mutex_t *count_mutex;
+pthread_cond_t *count_threshold_cv;
+
 sem_t semaphore;
 
 //Passenger starting functions
@@ -114,12 +120,20 @@ int makeReservation(int passenger_id, int tour_id, int agent_id, int seatnumber,
   time_t now;
   int index = num_of_seats * (tour_id - 1) + seatnumber -1;
   int result = 1;
-  //sem_wait(&semaphore);
+
+  /*pthread_mutex_lock(&count_mutex[tour_id]);
+  while(remainingSeats[tour_id] < 1){
+    printf("agent id %d & passenger_id %d is waiting for tour: %d\n",agent_id,passenger_id,tour_id);
+    pthread_cond_wait(&count_threshold_cv[tour_id], &count_mutex[tour_id]);
+  }
+  pthread_mutex_unlock(&count_mutex[tour_id]);*/
 
   pthread_mutex_lock(&mutexs[index]);
   pthread_mutex_lock(&mutexs_passenger[passenger_id]);
 
   if (passengers[passenger_id].rid1[day] == -1 || passengers[passenger_id].rid2[day] == -1){
+    //sem_wait(&semaphore);
+
     if (seats[index].status == 'A'){
         seats[index].status = 'R';
         now = time(0);
@@ -138,6 +152,11 @@ int makeReservation(int passenger_id, int tour_id, int agent_id, int seatnumber,
         } else{
           printf("UNEXPECTED RID1 RID2 ERROR!\n");
         }
+
+        /*pthread_mutex_lock(&count_mutex[tour_id]);
+        printf("made reservation, remainingSeats of %d %d\n",tour_id, remainingSeats[tour_id]);
+        remainingSeats[tour_id] -= 1;
+        pthread_mutex_unlock(&count_mutex[tour_id]);*/
 
         pthread_mutex_lock(&log_mutex);
         logs[log_counter].ptime = now;
@@ -176,9 +195,9 @@ void* cancelReservation(int passenger_id, int tour_id, int agent_id, int seatnum
         if (seats[index].status == 'R'){
           seats[index].status = 'A';
           now = time(0);
-          seats[index].passenger_id = NULL;
-          seats[index].reservation_id = NULL;
-          seats[index].tour_id = NULL;
+          seats[index].passenger_id = -1;
+          seats[index].reservation_id = -1;
+          seats[index].tour_id = -1;
 
           if (passengers[passenger_id].rid1[day] == index){
               passengers[passenger_id].rid1[day] = -1;
@@ -187,6 +206,15 @@ void* cancelReservation(int passenger_id, int tour_id, int agent_id, int seatnum
           } else {
             printf("ERROR! reservation records could not be found in passenger\n");
           }
+
+          /*pthread_mutex_lock(&count_mutex[tour_id]);
+          remainingSeats[tour_id] += 1;
+          printf("canceled reservation, remainingSeats of %d is %d\n",tour_id, remainingSeats[tour_id]);
+          if (remainingSeats[tour_id] == 1){
+            pthread_cond_broadcast(&count_threshold_cv[tour_id]);
+          }
+          pthread_mutex_unlock(&count_mutex[tour_id]);*/
+
 
           pthread_mutex_lock(&log_mutex);
           logs[log_counter].ptime = now;
@@ -198,7 +226,7 @@ void* cancelReservation(int passenger_id, int tour_id, int agent_id, int seatnum
           log_counter += 1;
           pthread_mutex_unlock(&log_mutex);
 
-          sem_post(&semaphore); // wake up other waiting process
+          //sem_post(&semaphore); // wake up other waiting process
         }
         else{
           printf("This seat is not reserved!\n");
@@ -215,15 +243,20 @@ void* cancelReservation(int passenger_id, int tour_id, int agent_id, int seatnum
 void* buyTicket(int passenger_id, int tour_id, int agent_id, int seatnumber, int day){
   time_t now;
   int index = num_of_seats * (tour_id - 1) + seatnumber -1;
+  int freeSeat = 0;
   pthread_mutex_lock(&mutexs[index]);
   pthread_mutex_lock(&mutexs_passenger[passenger_id]);
+
+  if (seats[index].status == 'A'){
+      freeSeat = 1;
+  }
 
   if (seats[index].status == 'A' || (seats[index].status == 'R' && seats[index].passenger_id == passenger_id)){
       seats[index].status = 'B';
       now = time(0);
       seats[index].passenger_id = passenger_id;
       seats[index].tour_id = tour_id;
-      seats[index].reservation_id = NULL;
+      seats[index].reservation_id = -1;
 
       insertArray(&passengers[passenger_id].seats, index);
 
@@ -234,6 +267,14 @@ void* buyTicket(int passenger_id, int tour_id, int agent_id, int seatnumber, int
       } else {
         printf("ERROR! reservation records could not be found in passenger\n");
       }
+
+      /*if (freeSeat == 1){
+        pthread_mutex_lock(&count_mutex[tour_id]);
+        remainingSeats[tour_id] -= 1;
+        printf("bought new ticket, remainingSeats of %d %d\n",tour_id, remainingSeats[tour_id]);
+        pthread_mutex_unlock(&count_mutex[tour_id]);
+      }*/
+
 
       pthread_mutex_lock(&log_mutex);
       logs[log_counter].ptime = now;
@@ -257,6 +298,7 @@ void* doRandomAgentActions(void* arg){
     AidArgs *aarg = arg;
     int agent_id = aarg->aid;
     int rseat, rtour;
+    time_t now;
     int i;
     long int start;
     float r;
@@ -266,6 +308,7 @@ void* doRandomAgentActions(void* arg){
     int rindices[4];
     int rdays[4];
     int passenger_id;
+    int viewable;
     srand(random_seed);
 
     for (i= 0; i < simulation_time; i++){
@@ -273,12 +316,13 @@ void* doRandomAgentActions(void* arg){
         while (time(0) < start + DAY_IN_SECONDS){
             r = (rand() % 10000) / 10000.0;
             rcount = 0;
+            viewable = 0;
             passenger_id = (int) (rand() % num_of_passengers);
 
             if (r < 0.4){
               rseat = (int)(rand() % num_of_seats + 1);
               rtour = (int)(rand() % num_of_tours + 1);
-              makeReservation(passenger_id, rtour, agent_id, rseat,i);
+              makeReservation(passenger_id, rtour, agent_id, rseat, i);
             }
             else if (r < 0.6){
               if (i > 0){
@@ -311,23 +355,81 @@ void* doRandomAgentActions(void* arg){
                   temp_index = rindices[rres];
                   rtour = (temp_index / num_of_seats) + 1;
                   rseat = (temp_index % num_of_seats) + 1;
-                  printf("AGENT CANCEL REQUEST from random %d %d %d\n",rtour,rseat,rdays[rres]);
+                  //printf("AGENT CANCEL REQUEST from random %d %d %d\n",rtour,rseat,rdays[rres]);
                   cancelReservation(passenger_id, rtour, agent_id, rseat, rdays[rres]);
 
               } else if (rcount == 1){
                 temp_index = rindices[0];
                 rtour = (temp_index / num_of_seats) + 1;
                 rseat = (temp_index % num_of_seats) + 1;
-                printf("AGENT CANCEL REQUEST from one selection %d %d %d\n",rtour,rseat,rdays[0]);
+                //printf("AGENT CANCEL REQUEST from one selection %d %d %d\n",rtour,rseat,rdays[0]);
                 cancelReservation(passenger_id, rtour, agent_id, rseat, rdays[0]);
               } else {
                   //printf("No reservation to cancel!\n");
               }
             }
             else if (r < 0.8){
-              //printf("view the reserved ticket for %d\n", passenger_id);
+              /*
+              if (passengers[passenger_id].seats.used != 0){
+                  viewable = 1;
+                  now = time(0);
+                  temp_index = passengers[passenger_id].seats.array[0];
+                  rtour = (temp_index / num_of_seats) + 1;
+                  rseat = (temp_index % num_of_seats) + 1;
+              } else {
+                if (i > 0){
+                  if (passengers[passenger_id].rid1[i-1] != -1){
+                      rindices[rcount] = passengers[passenger_id].rid1[i-1];
+                      rdays[rcount] = i-1;
+                      rcount += 1;
+                  }
+                  if (passengers[passenger_id].rid2[i-1] != -1){
+                      rindices[rcount] = passengers[passenger_id].rid2[i-1];
+                      rdays[rcount] = i-1;
+                      rcount += 1;
+                  }
+                }
+
+                if (passengers[passenger_id].rid2[i] != -1){
+                    rindices[rcount] = passengers[passenger_id].rid2[i];
+                    rdays[rcount] = i;
+                    rcount += 1;
+                }
+
+                if (passengers[passenger_id].rid1[i] != -1){
+                    rindices[rcount] = passengers[passenger_id].rid1[i];
+                    rdays[rcount] = i;
+                    rcount += 1;
+                }
+
+                if (rcount > 1){
+                    viewable = 1;
+                    rres = (int) (rand() % rcount);
+                    temp_index = rindices[rres];
+                    rtour = (temp_index / num_of_seats) + 1;
+                    rseat = (temp_index % num_of_seats) + 1;
+
+                } else if (rcount == 1){
+                  viewable = 1;
+                  temp_index = rindices[0];
+                  rtour = (temp_index / num_of_seats) + 1;
+                  rseat = (temp_index % num_of_seats) + 1;
+                }
+              }
+
+              if (viewable == 1){
+                pthread_mutex_lock(&log_mutex);
+                logs[log_counter].ptime = now;
+                logs[log_counter].passenger_id = passenger_id;
+                logs[log_counter].agent_id = 0;
+                logs[log_counter].operation = 'V';
+                logs[log_counter].seat_number = rseat;
+                logs[log_counter].tour_id = rtour;
+                log_counter += 1;
+                pthread_mutex_unlock(&log_mutex);
+              }*/
             }
-            else{
+            else{ // BUY PART
               if (i > 0){
                 if (passengers[passenger_id].rid1[i-1] != -1){
                     rindices[rcount] = passengers[passenger_id].rid1[i-1];
@@ -358,14 +460,14 @@ void* doRandomAgentActions(void* arg){
                   temp_index = rindices[rres];
                   rtour = (temp_index / num_of_seats) + 1;
                   rseat = (temp_index % num_of_seats) + 1;
-                  printf("AGENT BUY REQUEST: from random %d %d %d\n",rtour,rseat,rdays[rres]);
+                  //"AGENT BUY REQUEST: from random %d %d %d\n",rtour,rseat,rdays[rres]);
                   buyTicket(passenger_id, rtour, agent_id, rseat, rdays[rres]);
 
               } else if (rcount == 1){
                 temp_index = rindices[0];
                 rtour = (temp_index / num_of_seats) + 1;
                 rseat = (temp_index % num_of_seats) + 1;
-                printf("AGENT BUY REQUEST: from one selection %d %d %d\n",rtour,rseat,rdays[0]);
+                //printf("AGENT BUY REQUEST: from one selection %d %d %d\n",rtour,rseat,rdays[0]);
                 buyTicket(passenger_id, rtour, agent_id, rseat, rdays[0]);
               } else {
                   //printf("No reservation to buy!\n");
@@ -439,14 +541,14 @@ void* doRandomPassengerActions(void* arg){
                   temp_index = rindices[rres];
                   rtour = (temp_index / num_of_seats) + 1;
                   rseat = (temp_index % num_of_seats) + 1;
-                  printf("PASSENGER CANCEL REQUEST from random %d %d %d\n",rtour,rseat,rdays[rres]);
+                  //printf("PASSENGER CANCEL REQUEST from random %d %d %d\n",rtour,rseat,rdays[rres]);
                   cancelReservation(passenger_id, rtour, 0, rseat, rdays[rres]);
 
               } else if (rcount == 1){
                 temp_index = rindices[0];
                 rtour = (temp_index / num_of_seats) + 1;
                 rseat = (temp_index % num_of_seats) + 1;
-                printf("PASSENGER CANCEL REQUEST from one selection %d %d %d\n",rtour,rseat,rdays[0]);
+                //printf("PASSENGER CANCEL REQUEST from one selection %d %d %d\n",rtour,rseat,rdays[0]);
                 cancelReservation(passenger_id, rtour, 0, rseat, rdays[0]);
               } else {
                   //printf("No reservation to cancel!\n");
@@ -486,14 +588,14 @@ void* doRandomPassengerActions(void* arg){
                   temp_index = rindices[rres];
                   rtour = (temp_index / num_of_seats) + 1;
                   rseat = (temp_index % num_of_seats) + 1;
-                  printf("PASSENGER BUY REQUEST: from random %d %d %d\n",rtour,rseat,rdays[rres]);
+                  //printf("PASSENGER BUY REQUEST: from random %d %d %d\n",rtour,rseat,rdays[rres]);
                   buyTicket(passenger_id, rtour, 0, rseat, rdays[rres]);
 
               } else if (rcount == 1){
                 temp_index = rindices[0];
                 rtour = (temp_index / num_of_seats) + 1;
                 rseat = (temp_index % num_of_seats) + 1;
-                printf("PASSENGER BUY REQUEST: from one selection %d %d %d\n",rtour,rseat,rdays[0]);
+                //printf("PASSENGER BUY REQUEST: from one selection %d %d %d\n",rtour,rseat,rdays[0]);
                 buyTicket(passenger_id, rtour, 0, rseat, rdays[0]);
               } else {
                   //printf("No reservation to buy!\n");
@@ -506,11 +608,12 @@ void* doRandomPassengerActions(void* arg){
 }
 
 int main(int argc, char *argv[]){
-  int i,j,k,d,ind,j2,k2, m,g;
+  int i,j,k,d,ind,j2,k2, m,g, v;
   pthread_t *passengerThreads;
   pthread_t *agentThreads;
   PidArgs *pargs;
   AidArgs *aargs;
+  FILE *output = fopen("tickets.log","w+");
 
   for (i = 0; i< argc; i++){
     if (argv[i][0] == '-'){
@@ -543,8 +646,17 @@ int main(int argc, char *argv[]){
   seats = malloc(sizeof(Seat) * num_of_seats * num_of_tours);
   logs =  malloc(sizeof(Log) * 10000);
   passengers = malloc(sizeof(Passenger) * num_of_passengers);
+  remainingSeats = malloc(sizeof(int) * num_of_tours);
+  count_mutex = malloc(sizeof(pthread_mutex_t) * num_of_tours);
+  count_threshold_cv = malloc(sizeof(pthread_cond_t) * num_of_tours);
 
-  sem_init(&semaphore,0, num_of_tours * num_of_seats);
+  //sem_init(&semaphore,0, num_of_tours * num_of_seats);
+
+  for (v = 0; v < num_of_tours; v++){
+      remainingSeats[v] = num_of_seats;
+      pthread_mutex_init(&count_mutex[v], NULL);
+      pthread_cond_init(&count_threshold_cv[v],NULL);
+  }
 
   for (m = 0; m < num_of_tours; m++){
     for (i= 0; i < num_of_seats; i++){
@@ -567,6 +679,7 @@ int main(int argc, char *argv[]){
       initArray(&passengers[m].seats, 5);
       pthread_mutex_init(&mutexs_passenger[m], NULL);
   }
+
 
   passengerThreads = malloc(sizeof(pthread_t) * num_of_passengers);
   pargs = malloc(sizeof(PidArgs) * num_of_passengers);
@@ -594,15 +707,19 @@ int main(int argc, char *argv[]){
       pthread_join(agentThreads[k2],NULL);
   }
 
+
   //printf("%-10s\t%-5s\t%-9s\t%-7s\t%-7s","Time","P_ID","A_ID","Operation","Seat No", "Tour No");
-  printf("Time     \tP_ID\tA_ID\tOperation\tSeat No \tTour No\n");
+  fprintf(output,"Time     \tP_ID\tA_ID\tOperation\tSeat No \tTour No\n");
 
   for(ind = 0; ind < log_counter; ind++){
       time_t t = logs[ind].ptime;
       struct tm *time_info;
       time_info = localtime(&t);
       printf("%-2d:%-2d:%-2d\t%-5d\t%-5d\t%-9c\t%-7d \t%-7d\n", time_info->tm_hour, time_info->tm_min, time_info->tm_sec, logs[ind].passenger_id, logs[ind].agent_id, logs[ind].operation, logs[ind].seat_number, logs[ind].tour_id);
+      fprintf(output,"%-2d:%-2d:%-2d\t%-5d\t%-5d\t%-9c\t%-7d \t%-7d\n", time_info->tm_hour, time_info->tm_min, time_info->tm_sec, logs[ind].passenger_id, logs[ind].agent_id, logs[ind].operation, logs[ind].seat_number, logs[ind].tour_id);
   }
+
+  printf("tickets.log is created.\n");
 
   for (d = 0; d < num_of_seats * num_of_tours; d++){
     pthread_mutex_destroy(&mutexs[d]);
