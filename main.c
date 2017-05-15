@@ -192,7 +192,7 @@ void* cancelReservation(int passenger_id, int tour_id, int agent_id, int seatnum
 
     if (seats[index].passenger_id == passenger_id){
 
-        if (seats[index].status == 'R'){
+        if (seats[index].status == 'R' || seats[index].status == 'B'){
           seats[index].status = 'A';
           now = time(0);
           seats[index].passenger_id = -1;
@@ -204,7 +204,7 @@ void* cancelReservation(int passenger_id, int tour_id, int agent_id, int seatnum
           } else if (passengers[passenger_id].rid2[day] == index){
               passengers[passenger_id].rid2[day] = -1;
           } else {
-            printf("ERROR! reservation records could not be found in passenger\n");
+            //printf("ERROR! reservation records could not be found in passenger\n");
           }
 
           /*pthread_mutex_lock(&count_mutex[tour_id]);
@@ -233,7 +233,7 @@ void* cancelReservation(int passenger_id, int tour_id, int agent_id, int seatnum
         }
     }
     else{
-        printf("This reservation does not belong to given passenger_id!\n");
+        //printf("This reservation does not belong to given passenger_id!\n");
     }
 
     pthread_mutex_unlock(&mutexs_passenger[passenger_id]);
@@ -422,19 +422,23 @@ void* doRandomAgentActions(void* arg){
 
 void* doRandomPassengerActions(void* arg){
     PidArgs *parg = arg;
+    time_t now;
     int passenger_id = parg->pid;
     int rseat, rtour;
     int i;
     long int start;
     float r;
     int rres;
+    int randomhelper;
     int temp_index;
     int rcount = 0;
     int rindices[4];
     int rdays[4];
     int resResult;
     int resperdayCount = 0;
-    int h,n;
+    int h,n, s;
+    int viewable;
+    int show = 0;
     srand(random_seed);
 
     for (i= 0; i < simulation_time; i++){
@@ -494,69 +498,82 @@ void* doRandomPassengerActions(void* arg){
                 //printf("PASSENGER CANCEL REQUEST from one selection %d %d %d\n",rtour,rseat,rdays[0]);
                 cancelReservation(passenger_id, rtour, 0, rseat, rdays[0]);
               } else {
+                  /*randomhelper = 0;
+                  if (i > 0){
+                    randomhelper = (int)(rand() % (i+1));
+                  }
+                  s = 0;
+                  if (passengers[passenger_id].seats[randomhelper].used > 0){
+                      s = (int)(rand() % (passengers[passenger_id].seats[randomhelper].used + 1));
+                  }
+                  rtour = (s / num_of_seats) + 1;
+                  rseat = (s % num_of_seats) + 1;
+                  cancelReservation(passenger_id, rtour, 0, rseat, i);
+                  */
                   //printf("No reservation to cancel!\n");
               }
             }
             else if (r < 0.8){
-              /*
-              if (passengers[passenger_id].seats.used != 0){
-                  viewable = 1;
-                  now = time(0);
-                  temp_index = passengers[passenger_id].seats.array[0];
-                  rtour = (temp_index / num_of_seats) + 1;
-                  rseat = (temp_index % num_of_seats) + 1;
-              } else {
-                if (i > 0){
-                  if (passengers[passenger_id].rid1[i-1] != -1){
-                      rindices[rcount] = passengers[passenger_id].rid1[i-1];
-                      rdays[rcount] = i-1;
-                      rcount += 1;
-                  }
-                  if (passengers[passenger_id].rid2[i-1] != -1){
-                      rindices[rcount] = passengers[passenger_id].rid2[i-1];
-                      rdays[rcount] = i-1;
-                      rcount += 1;
-                  }
-                }
-
-                if (passengers[passenger_id].rid2[i] != -1){
-                    rindices[rcount] = passengers[passenger_id].rid2[i];
-                    rdays[rcount] = i;
-                    rcount += 1;
-                }
-
-                if (passengers[passenger_id].rid1[i] != -1){
-                    rindices[rcount] = passengers[passenger_id].rid1[i];
-                    rdays[rcount] = i;
-                    rcount += 1;
-                }
-
-                if (rcount > 1){
+              if (show){
+                if (passengers[passenger_id].seats[i].used != 0){
                     viewable = 1;
-                    rres = (int) (rand() % rcount);
-                    temp_index = rindices[rres];
+                    now = time(0);
+                    temp_index = passengers[passenger_id].seats[i].array[0];
                     rtour = (temp_index / num_of_seats) + 1;
                     rseat = (temp_index % num_of_seats) + 1;
+                } else {
+                  if (i > 0){
+                    if (passengers[passenger_id].rid1[i-1] != -1){
+                        rindices[rcount] = passengers[passenger_id].rid1[i-1];
+                        rdays[rcount] = i-1;
+                        rcount += 1;
+                    }
+                    if (passengers[passenger_id].rid2[i-1] != -1){
+                        rindices[rcount] = passengers[passenger_id].rid2[i-1];
+                        rdays[rcount] = i-1;
+                        rcount += 1;
+                    }
+                  }
 
-                } else if (rcount == 1){
-                  viewable = 1;
-                  temp_index = rindices[0];
-                  rtour = (temp_index / num_of_seats) + 1;
-                  rseat = (temp_index % num_of_seats) + 1;
+                  if (passengers[passenger_id].rid2[i] != -1){
+                      rindices[rcount] = passengers[passenger_id].rid2[i];
+                      rdays[rcount] = i;
+                      rcount += 1;
+                  }
+
+                  if (passengers[passenger_id].rid1[i] != -1){
+                      rindices[rcount] = passengers[passenger_id].rid1[i];
+                      rdays[rcount] = i;
+                      rcount += 1;
+                  }
+
+                  if (rcount > 1){
+                      viewable = 1;
+                      rres = (int) (rand() % rcount);
+                      temp_index = rindices[rres];
+                      rtour = (temp_index / num_of_seats) + 1;
+                      rseat = (temp_index % num_of_seats) + 1;
+
+                  } else if (rcount == 1){
+                    viewable = 1;
+                    temp_index = rindices[0];
+                    rtour = (temp_index / num_of_seats) + 1;
+                    rseat = (temp_index % num_of_seats) + 1;
+                  }
+                }
+
+                if (viewable == 1){
+                  pthread_mutex_lock(&log_mutex);
+                  logs[log_counter].ptime = now;
+                  logs[log_counter].passenger_id = passenger_id;
+                  logs[log_counter].agent_id = 0;
+                  logs[log_counter].operation = 'V';
+                  logs[log_counter].seat_number = rseat;
+                  logs[log_counter].tour_id = rtour;
+                  log_counter += 1;
+                  pthread_mutex_unlock(&log_mutex);
                 }
               }
-
-              if (viewable == 1){
-                pthread_mutex_lock(&log_mutex);
-                logs[log_counter].ptime = now;
-                logs[log_counter].passenger_id = passenger_id;
-                logs[log_counter].agent_id = 0;
-                logs[log_counter].operation = 'V';
-                logs[log_counter].seat_number = rseat;
-                logs[log_counter].tour_id = rtour;
-                log_counter += 1;
-                pthread_mutex_unlock(&log_mutex);
-              }*/
               //printf("view the reserved ticket for %d\n", passenger_id);
             }
             else{
@@ -752,8 +769,6 @@ int main(int argc, char *argv[]){
         printf("\n");
     }
   }
-
-
 
   //printf("Time     \tP_ID\tA_ID\tOperation\tSeat No \tTour No\n");
   fprintf(output,"Time     \tP_ID\tA_ID\tOperation\tSeat No \tTour No\n");
